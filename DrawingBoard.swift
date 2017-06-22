@@ -10,8 +10,13 @@ import UIKit
 
 class DrawingBoard: UIView {
     fileprivate var currentLayer: CALayer?
+    fileprivate var allItems: [Item] = []
+    fileprivate var unionRects: [CGRect] = []
+    fileprivate let unionCount = 5
 
     func setup() {
+        allItems.removeAll()
+
         /// 圈数
         let section = 4
         /// 每圈个数
@@ -46,7 +51,21 @@ class DrawingBoard: UIView {
                 bezierPath.close()
                 layer.bezierPath = bezierPath
                 self.layer.addSublayer(layer)
+                allItems.append(Item(layer))
             }
+        }
+
+        unionRects.removeAll()
+        var idx = 0
+        while idx < allItems.count {
+            var unionRect = allItems[idx].rect
+            let end = min(idx + unionCount, allItems.count)
+
+            for i in idx+1..<end {
+                unionRect = CGRect.union(unionRect)(allItems[i].rect)
+            }
+            idx = end
+            self.unionRects.append(unionRect)
         }
     }
 }
@@ -66,20 +85,37 @@ extension DrawingBoard {
     }
 
     func hitPoint(_ touches: Set<UITouch>) {
+        guard allItems.count > 0 else { return }
         guard let point = touches.first?.location(in: self) else { return }
-        guard let sublayers = layer.sublayers else { return }
-        var tapLayer: Layer?
-        for layer in sublayers {
-            guard let layer = layer as? Layer else { continue }
-            guard let bezierPath = layer.bezierPath else { continue }
-            guard bezierPath.contains(point) else { continue }
-            tapLayer = layer
+        var layer: Layer?
+        for idx in 0..<unionRects.count {
+            guard unionRects[idx].contains(point) else { continue }
+            for i in (idx*unionCount)..<min((idx+1)*unionCount, allItems.count) {
+                let item = allItems[i]
+                guard item.bezierPath.contains(point) else { continue }
+                layer = item.layer
+                break
+            }
+            guard layer != nil else { continue }
             break
         }
-        guard let layer = tapLayer else { return }
-        guard layer != currentLayer else { return }
-        layer.isSelected = !layer.isSelected
-        currentLayer = layer
+        guard let tapLayer = layer else { return }
+        guard tapLayer != currentLayer else { return }
+        tapLayer.isSelected = !tapLayer.isSelected
+        currentLayer = tapLayer
+    }
+}
+
+extension DrawingBoard {
+    struct Item {
+        let layer: Layer
+        let bezierPath: UIBezierPath
+        let rect: CGRect
+        init(_ layer: Layer) {
+            self.layer = layer
+            self.bezierPath = layer.bezierPath ?? UIBezierPath()
+            self.rect = layer.bezierPath?.bounds ?? CGRect.zero
+        }
     }
 }
 
